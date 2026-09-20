@@ -54,6 +54,25 @@ class TaskManagementApiIntegrationTests {
     }
 
     @Test
+    void publishesOpenApiDocumentation() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON
+                ))
+                .andExpect(jsonPath("$.info.title")
+                        .value("Task Management API"))
+                .andExpect(jsonPath("$['paths']['/api/tasks']")
+                        .exists())
+                .andExpect(jsonPath(
+                        "$.components.securitySchemes.bearerAuth"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$.components.securitySchemes.basicAuth"
+                ).exists());
+    }
+
+    @Test
     void supportsTheCompleteTaskWorkflow() throws Exception {
         String owner = "workflow-owner@example.com";
         String assignee = "workflow-assignee@example.com";
