@@ -54,6 +54,62 @@ class TaskManagementApiIntegrationTests {
     }
 
     @Test
+    void publishesOpenApiDocumentation() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON
+                ))
+                .andExpect(jsonPath("$.info.title")
+                        .value("Task Management API"))
+                .andExpect(jsonPath("$['paths']['/api/tasks']")
+                        .exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks'].get.responses['400']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/accounts'].post.responses['409']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/auth/token'].post.responses['401']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks'].post.responses['400']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/assign']"
+                                + ".put.responses['403']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/status']"
+                                + ".put.responses['404']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/comments']"
+                                + ".post.responses['400']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/comments']"
+                                + ".get.responses['404']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$.components.securitySchemes.bearerAuth"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$.components.securitySchemes.basicAuth"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$.components.schemas.ApiProblem.properties.title"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$.components.schemas.ApiProblem.properties.errors"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$.components.schemas.ApiProblem.properties.properties"
+                ).doesNotExist());
+    }
+
+    @Test
     void supportsTheCompleteTaskWorkflow() throws Exception {
         String owner = "workflow-owner@example.com";
         String assignee = "workflow-assignee@example.com";
@@ -174,6 +230,21 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(jsonPath("$.title").value("Invalid request"))
                 .andExpect(jsonPath("$.detail")
                         .value("Page must be zero or greater"));
+
+        mockMvc.perform(get("/api/tasks")
+                        .param("page", "8888888888888888")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title")
+                        .value("Invalid request"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Parameter 'page' must be a valid integer"))
+                .andExpect(jsonPath("$.instance")
+                        .value("/api/tasks"))
+                .andExpect(jsonPath("$.trace").doesNotExist());
     }
 
     @Test
