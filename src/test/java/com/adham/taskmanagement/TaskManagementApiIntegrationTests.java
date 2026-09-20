@@ -26,7 +26,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @Testcontainers
 @AutoConfigureMockMvc
-@SpringBootTest(properties = "spring.datasource.password=test")
+@SpringBootTest(properties = {
+        "spring.datasource.password=test",
+        "app.security.jwt.secret-base64="
+                + "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=",
+        "app.security.jwt.access-token-ttl=1h"
+})
 class TaskManagementApiIntegrationTests {
 
     private static final String PASSWORD = "password123";
