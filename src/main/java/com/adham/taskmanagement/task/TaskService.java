@@ -2,6 +2,7 @@ package com.adham.taskmanagement.task;
 
 import com.adham.taskmanagement.account.Account;
 import com.adham.taskmanagement.account.AccountRepository;
+import com.adham.taskmanagement.comment.CommentCountProjection;
 import com.adham.taskmanagement.comment.CommentRepository;
 import com.adham.taskmanagement.common.exception.ForbiddenOperationException;
 import com.adham.taskmanagement.common.exception.InvalidRequestException;
@@ -146,8 +147,8 @@ public class TaskService {
                 .countCommentsByTaskIds(taskIds)
                 .stream()
                 .collect(Collectors.toMap(
-                        row -> (Long) row[0],
-                        row -> (Long) row[1]
+                        CommentCountProjection::getTaskId,
+                        CommentCountProjection::getTotalComments
                 ));
     }
 

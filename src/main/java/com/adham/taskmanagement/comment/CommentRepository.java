@@ -12,12 +12,13 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
     List<Comment> findAllByTask_IdOrderByIdDesc(Long taskId);
 
     @Query("""
-            SELECT c.task.id, COUNT(c.id)
+            SELECT c.task.id AS taskId,
+                   COUNT(c.id) AS totalComments
             FROM Comment c
             WHERE c.task.id IN :taskIds
             GROUP BY c.task.id
             """)
-    List<Object[]> countCommentsByTaskIds(
+    List<CommentCountProjection> countCommentsByTaskIds(
             @Param("taskIds") Collection<Long> taskIds
     );
 }
