@@ -113,13 +113,67 @@ class TaskManagementApiIntegrationTests {
                         .param("assignee", assignee)
                         .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(taskId))
-                .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"))
-                .andExpect(jsonPath("$[0].author").value(owner))
-                .andExpect(jsonPath("$[0].assignee").value(assignee))
-                .andExpect(jsonPath("$[0].total_comments").value(1))
-                .andExpect(jsonPath("$[0].created_at").isNotEmpty())
-                .andExpect(jsonPath("$[0].updated_at").isNotEmpty());
+                .andExpect(jsonPath("$.content[0].id").value(taskId))
+                .andExpect(jsonPath("$.content[0].status")
+                        .value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.content[0].author").value(owner))
+                .andExpect(jsonPath("$.content[0].assignee")
+                        .value(assignee))
+                .andExpect(jsonPath("$.content[0].total_comments")
+                        .value(1))
+                .andExpect(jsonPath("$.content[0].created_at")
+                        .isNotEmpty())
+                .andExpect(jsonPath("$.content[0].updated_at")
+                        .isNotEmpty())
+                .andExpect(jsonPath("$.total_elements").value(1));
+    }
+
+    @Test
+    void paginatesAndSortsTasks() throws Exception {
+        String owner = "pagination-owner@example.com";
+
+        register(owner);
+        String token = obtainToken(owner);
+
+        String firstTaskId = createTask(token);
+        String secondTaskId = createTask(token);
+        String thirdTaskId = createTask(token);
+
+        mockMvc.perform(get("/api/tasks")
+                        .param("author", owner)
+                        .param("page", "0")
+                        .param("size", "2")
+                        .param("sort", "id,desc")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(thirdTaskId))
+                .andExpect(jsonPath("$.content[1].id").value(secondTaskId))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.total_elements").value(3))
+                .andExpect(jsonPath("$.total_pages").value(2))
+                .andExpect(jsonPath("$.first").value(true))
+                .andExpect(jsonPath("$.last").value(false));
+
+        mockMvc.perform(get("/api/tasks")
+                        .param("author", owner)
+                        .param("page", "1")
+                        .param("size", "2")
+                        .param("sort", "id,desc")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(firstTaskId))
+                .andExpect(jsonPath("$.last").value(true));
+
+        mockMvc.perform(get("/api/tasks")
+                        .param("page", "-1")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Invalid request"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Page must be zero or greater"));
     }
 
     @Test

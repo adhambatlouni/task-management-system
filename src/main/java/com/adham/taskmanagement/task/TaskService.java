@@ -4,7 +4,13 @@ import com.adham.taskmanagement.account.Account;
 import com.adham.taskmanagement.account.AccountRepository;
 import com.adham.taskmanagement.comment.CommentRepository;
 import com.adham.taskmanagement.common.exception.ForbiddenOperationException;
+import com.adham.taskmanagement.common.exception.InvalidRequestException;
 import com.adham.taskmanagement.common.exception.ResourceNotFoundException;
+import com.adham.taskmanagement.common.web.PagedResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +22,16 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class TaskService {
+
+    private static final int MAX_PAGE_SIZE = 100;
+
+    private static final Map<String, String> SORT_PROPERTIES = Map.of(
+            "id", "id",
+            "title", "title",
+            "status", "status",
+            "created_at", "createdAt",
+            "updated_at", "updatedAt"
+    );
 
     private final TaskRepository taskRepository;
     private final AccountRepository accountRepository;
@@ -55,10 +71,14 @@ public class TaskService {
         return toResponse(savedTask);
     }
 
-    public List<TaskListResponse> getTasks(
+    public PagedResponse<TaskListResponse> getTasks(
             String authorEmail,
-            String assigneeEmail
+            String assigneeEmail,
+            int page,
+            int size,
+            String sort
     ) {
+        Pageable pageable = createPageable(page, size, sort);
 
         boolean hasAuthor =
                 authorEmail != null && !authorEmail.isBlank();
@@ -66,62 +86,122 @@ public class TaskService {
         boolean hasAssignee =
                 assigneeEmail != null && !assigneeEmail.isBlank();
 
-        List<Task> tasks;
+        Page<Task> tasks;
 
         if (hasAuthor && hasAssignee) {
 
             tasks = taskRepository
-                    .findAllByAuthor_EmailIgnoreCaseAndAssignee_EmailIgnoreCaseOrderByIdDesc(
+                    .findAllByAuthor_EmailIgnoreCaseAndAssignee_EmailIgnoreCase(
                             authorEmail,
-                            assigneeEmail
+                            assigneeEmail,
+                            pageable
                     );
 
         } else if (hasAuthor) {
 
             tasks = taskRepository
-                    .findAllByAuthor_EmailIgnoreCaseOrderByIdDesc(
-                            authorEmail
+                    .findAllByAuthor_EmailIgnoreCase(
+                            authorEmail,
+                            pageable
                     );
 
         } else if (hasAssignee) {
 
             tasks = taskRepository
-                    .findAllByAssignee_EmailIgnoreCaseOrderByIdDesc(
-                            assigneeEmail
+                    .findAllByAssignee_EmailIgnoreCase(
+                            assigneeEmail,
+                            pageable
                     );
 
         } else {
 
-            tasks = taskRepository
-                    .findAllByOrderByIdDesc();
+            tasks = taskRepository.findAll(pageable);
         }
 
+        Map<Long, Long> commentCounts =
+                getCommentCounts(tasks.getContent());
+
+        return PagedResponse.from(
+                tasks.map(task -> toListResponse(
+                                task,
+                                commentCounts.getOrDefault(
+                                        task.getId(),
+                                        0L
+                                )
+                        )
+                )
+        );
+    }
+
+    private Map<Long, Long> getCommentCounts(List<Task> tasks) {
         if (tasks.isEmpty()) {
-            return List.of();
+            return Map.of();
         }
 
         List<Long> taskIds = tasks.stream()
                 .map(Task::getId)
                 .toList();
 
-        Map<Long, Long> commentCounts =
-                commentRepository
-                        .countCommentsByTaskIds(taskIds)
-                        .stream()
-                        .collect(Collectors.toMap(
-                                row -> (Long) row[0],
-                                row -> (Long) row[1]
-                        ));
+        return commentRepository
+                .countCommentsByTaskIds(taskIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (Long) row[1]
+                ));
+    }
 
-        return tasks.stream()
-                .map(task -> toListResponse(
-                        task,
-                        commentCounts.getOrDefault(
-                                task.getId(),
-                                0L
-                        )
-                ))
-                .toList();
+    private Pageable createPageable(
+            int page,
+            int size,
+            String sort
+    ) {
+        if (page < 0) {
+            throw new InvalidRequestException(
+                    "Page must be zero or greater"
+            );
+        }
+
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException(
+                    "Size must be between 1 and " + MAX_PAGE_SIZE
+            );
+        }
+
+        String[] sortParts = sort.split(",", -1);
+
+        if (sortParts.length != 2) {
+            throw new InvalidRequestException(
+                    "Sort must use the format field,direction"
+            );
+        }
+
+        String requestedField = sortParts[0].trim();
+        String property = SORT_PROPERTIES.get(requestedField);
+
+        if (property == null) {
+            throw new InvalidRequestException(
+                    "Unsupported sort field: " + requestedField
+            );
+        }
+
+        Sort.Direction direction;
+
+        try {
+            direction = Sort.Direction.fromString(
+                    sortParts[1].trim()
+            );
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidRequestException(
+                    "Sort direction must be asc or desc"
+            );
+        }
+
+        return PageRequest.of(
+                page,
+                size,
+                Sort.by(direction, property)
+        );
     }
 
     @Transactional
