@@ -2,6 +2,7 @@ package com.adham.taskmanagement;
 
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
+import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -14,6 +15,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -23,10 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @Testcontainers
 @AutoConfigureMockMvc
-@SpringBootTest(properties = {
-        "spring.datasource.password=test",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
-})
+@SpringBootTest(properties = "spring.datasource.password=test")
 class TaskManagementApiIntegrationTests {
 
     private static final String PASSWORD = "password123";
@@ -38,6 +37,15 @@ class TaskManagementApiIntegrationTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private Flyway flyway;
+
+    @Test
+    void appliesTheInitialDatabaseMigration() {
+        assertThat(flyway.info().current().getVersion().getVersion())
+                .isEqualTo("2");
+    }
 
     @Test
     void supportsTheCompleteTaskWorkflow() throws Exception {
