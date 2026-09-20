@@ -14,9 +14,14 @@ import java.time.Instant;
 public class TokenService {
 
     private final JwtEncoder jwtEncoder;
+    private final JwtProperties jwtProperties;
 
-    public TokenService(JwtEncoder jwtEncoder) {
+    public TokenService(
+            JwtEncoder jwtEncoder,
+            JwtProperties jwtProperties
+    ) {
         this.jwtEncoder = jwtEncoder;
+        this.jwtProperties = jwtProperties;
     }
 
     public String generateToken(Authentication authentication) {
@@ -26,7 +31,7 @@ public class TokenService {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject(authentication.getName())
                 .issuedAt(now)
-                .expiresAt(now.plusSeconds(3600))
+                .expiresAt(now.plus(jwtProperties.accessTokenTtl()))
                 .build();
 
         JwsHeader header = JwsHeader
