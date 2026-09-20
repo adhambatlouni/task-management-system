@@ -1,11 +1,10 @@
 package com.adham.taskmanagement.task;
 
+import com.adham.taskmanagement.common.web.PagedResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/tasks")
@@ -65,12 +64,21 @@ public class TaskController {
     }
 
     @GetMapping
-    public ResponseEntity<List<TaskListResponse>> getTasks(
+    public ResponseEntity<PagedResponse<TaskListResponse>> getTasks(
             @RequestParam(required = false) String author,
-            @RequestParam(required = false) String assignee
+            @RequestParam(required = false) String assignee,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "created_at,desc") String sort
     ) {
         return ResponseEntity.ok(
-                taskService.getTasks(author, assignee)
+                taskService.getTasks(
+                        author,
+                        assignee,
+                        page,
+                        size,
+                        sort
+                )
         );
     }
 }
