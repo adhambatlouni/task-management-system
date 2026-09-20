@@ -1,11 +1,12 @@
 package com.adham.taskmanagement.task;
 
-import jakarta.persistence.*;
 import com.adham.taskmanagement.account.Account;
+import com.adham.taskmanagement.common.persistence.AuditableEntity;
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "tasks")
-public class Task {
+public class Task extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

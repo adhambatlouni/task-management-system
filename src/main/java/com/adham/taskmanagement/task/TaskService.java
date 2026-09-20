@@ -217,7 +217,9 @@ public class TaskService {
                 task.getAuthor()
                         .getEmail()
                         .toLowerCase(Locale.ROOT),
-                assigneeEmail
+                assigneeEmail,
+                task.getCreatedAt(),
+                task.getUpdatedAt()
         );
     }
 
@@ -242,7 +244,9 @@ public class TaskService {
                         .getEmail()
                         .toLowerCase(Locale.ROOT),
                 assigneeEmail,
-                totalComments
+                totalComments,
+                task.getCreatedAt(),
+                task.getUpdatedAt()
         );
     }
 }

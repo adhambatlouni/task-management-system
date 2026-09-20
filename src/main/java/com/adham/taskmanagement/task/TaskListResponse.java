@@ -2,6 +2,8 @@ package com.adham.taskmanagement.task;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.time.Instant;
+
 public record TaskListResponse(
         String id,
         String title,
@@ -11,6 +13,12 @@ public record TaskListResponse(
         String assignee,
 
         @JsonProperty("total_comments")
-        long totalComments
+        long totalComments,
+
+        @JsonProperty("created_at")
+        Instant createdAt,
+
+        @JsonProperty("updated_at")
+        Instant updatedAt
 ) {
 }
