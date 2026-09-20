@@ -6,11 +6,13 @@ import com.adham.taskmanagement.common.exception.ResourceNotFoundException;
 import com.adham.taskmanagement.task.Task;
 import com.adham.taskmanagement.task.TaskRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
 
 @Service
+@Transactional(readOnly = true)
 public class CommentService {
 
     private final CommentRepository commentRepository;
@@ -27,6 +29,7 @@ public class CommentService {
         this.accountRepository = accountRepository;
     }
 
+    @Transactional
     public void createComment(
             Long taskId,
             CreateCommentRequest request,
