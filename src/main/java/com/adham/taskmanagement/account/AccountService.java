@@ -1,9 +1,8 @@
 package com.adham.taskmanagement.account;
 
-import org.springframework.http.HttpStatus;
+import com.adham.taskmanagement.common.exception.ResourceConflictException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Locale;
 
@@ -29,10 +28,7 @@ public class AccountService {
                         .toLowerCase(Locale.ROOT);
 
         if (accountRepository.existsByEmailIgnoreCase(normalizedEmail)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Email already exists"
-            );
+            throw new ResourceConflictException("Email already exists");
         }
 
         String encodedPassword =
