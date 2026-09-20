@@ -75,7 +75,9 @@ public class CommentService {
                 comment.getText(),
                 comment.getAuthor()
                         .getEmail()
-                        .toLowerCase(Locale.ROOT)
+                        .toLowerCase(Locale.ROOT),
+                comment.getCreatedAt(),
+                comment.getUpdatedAt()
         );
     }
 }

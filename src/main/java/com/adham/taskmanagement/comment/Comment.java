@@ -1,12 +1,13 @@
 package com.adham.taskmanagement.comment;
 
-import jakarta.persistence.*;
 import com.adham.taskmanagement.account.Account;
+import com.adham.taskmanagement.common.persistence.AuditableEntity;
 import com.adham.taskmanagement.task.Task;
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "comments")
-public class Comment {
+public class Comment extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

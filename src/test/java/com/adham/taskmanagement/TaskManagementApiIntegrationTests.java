@@ -50,7 +50,7 @@ class TaskManagementApiIntegrationTests {
     @Test
     void appliesTheInitialDatabaseMigration() {
         assertThat(flyway.info().current().getVersion().getVersion())
-                .isEqualTo("2");
+                .isEqualTo("3");
     }
 
     @Test
@@ -104,7 +104,9 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(jsonPath("$[0].task_id").value(taskId))
                 .andExpect(jsonPath("$[0].text")
                         .value("Authentication has been verified"))
-                .andExpect(jsonPath("$[0].author").value(assignee));
+                .andExpect(jsonPath("$[0].author").value(assignee))
+                .andExpect(jsonPath("$[0].created_at").isNotEmpty())
+                .andExpect(jsonPath("$[0].updated_at").isNotEmpty());
 
         mockMvc.perform(get("/api/tasks")
                         .param("author", owner)
@@ -115,7 +117,9 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"))
                 .andExpect(jsonPath("$[0].author").value(owner))
                 .andExpect(jsonPath("$[0].assignee").value(assignee))
-                .andExpect(jsonPath("$[0].total_comments").value(1));
+                .andExpect(jsonPath("$[0].total_comments").value(1))
+                .andExpect(jsonPath("$[0].created_at").isNotEmpty())
+                .andExpect(jsonPath("$[0].updated_at").isNotEmpty());
     }
 
     @Test
@@ -218,6 +222,8 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CREATED"))
                 .andExpect(jsonPath("$.assignee").value("none"))
+                .andExpect(jsonPath("$.created_at").isNotEmpty())
+                .andExpect(jsonPath("$.updated_at").isNotEmpty())
                 .andReturn();
 
         return JsonPath.read(
