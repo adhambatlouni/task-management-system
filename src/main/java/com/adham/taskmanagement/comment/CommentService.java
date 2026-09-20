@@ -1,12 +1,11 @@
 package com.adham.taskmanagement.comment;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 import com.adham.taskmanagement.account.Account;
 import com.adham.taskmanagement.account.AccountRepository;
+import com.adham.taskmanagement.common.exception.ResourceNotFoundException;
 import com.adham.taskmanagement.task.Task;
 import com.adham.taskmanagement.task.TaskRepository;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Locale;
@@ -37,19 +36,13 @@ public class CommentService {
         Task task = taskRepository
                 .findById(taskId)
                 .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Task not found"
-                        )
+                        new ResourceNotFoundException("Task not found")
                 );
 
         Account author = accountRepository
                 .findByEmailIgnoreCase(currentUserEmail)
                 .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Account not found"
-                        )
+                        new ResourceNotFoundException("Account not found")
                 );
 
         Comment comment = new Comment(
@@ -64,10 +57,7 @@ public class CommentService {
     public List<CommentResponse> getComments(Long taskId) {
 
         if (!taskRepository.existsById(taskId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Task not found"
-            );
+            throw new ResourceNotFoundException("Task not found");
         }
 
         return commentRepository

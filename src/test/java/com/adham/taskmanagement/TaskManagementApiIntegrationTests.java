@@ -20,6 +20,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -126,7 +127,31 @@ class TaskManagementApiIntegrationTests {
         mockMvc.perform(post("/api/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registrationJson(owner)))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title")
+                        .value("Resource conflict"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Email already exists"));
+
+        mockMvc.perform(post("/api/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "invalid-email",
+                                  "password": "short"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title")
+                        .value("Validation failed"))
+                .andExpect(jsonPath("$.errors.email").exists())
+                .andExpect(jsonPath("$.errors.password").exists());
 
         String ownerToken = obtainToken(owner);
         String assigneeToken = obtainToken(assignee);
@@ -140,11 +165,19 @@ class TaskManagementApiIntegrationTests {
                                   "assignee": "%s"
                                 }
                                 """.formatted(assignee)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.title")
+                        .value("Forbidden operation"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Only the task author can assign it"));
 
         mockMvc.perform(get("/api/tasks/{taskId}/comments", 999999)
                         .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title")
+                        .value("Resource not found"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Task not found"));
     }
 
     private void register(String email) throws Exception {

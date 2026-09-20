@@ -1,12 +1,11 @@
 package com.adham.taskmanagement.task;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 import com.adham.taskmanagement.account.Account;
 import com.adham.taskmanagement.account.AccountRepository;
 import com.adham.taskmanagement.comment.CommentRepository;
+import com.adham.taskmanagement.common.exception.ForbiddenOperationException;
+import com.adham.taskmanagement.common.exception.ResourceNotFoundException;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Locale;
@@ -38,7 +37,7 @@ public class TaskService {
         Account author = accountRepository
                 .findByEmailIgnoreCase(authorEmail)
                 .orElseThrow(() ->
-                        new UsernameNotFoundException("Account not found")
+                        new ResourceNotFoundException("Account not found")
                 );
 
         Task task = new Task(
@@ -131,18 +130,14 @@ public class TaskService {
         Task task = taskRepository
                 .findById(taskId)
                 .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Task not found"
-                        )
+                        new ResourceNotFoundException("Task not found")
                 );
 
         if (!task.getAuthor()
                 .getEmail()
                 .equalsIgnoreCase(currentUserEmail)) {
 
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
+            throw new ForbiddenOperationException(
                     "Only the task author can assign it"
             );
         }
@@ -159,10 +154,7 @@ public class TaskService {
         Account assignee = accountRepository
                 .findByEmailIgnoreCase(request.assignee())
                 .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Assignee not found"
-                        )
+                        new ResourceNotFoundException("Assignee not found")
                 );
 
         task.setAssignee(assignee);
@@ -182,10 +174,7 @@ public class TaskService {
         Task task = taskRepository
                 .findById(taskId)
                 .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Task not found"
-                        )
+                        new ResourceNotFoundException("Task not found")
                 );
 
         boolean isAuthor = task.getAuthor()
@@ -199,8 +188,7 @@ public class TaskService {
                         .equalsIgnoreCase(currentUserEmail);
 
         if (!isAuthor && !isAssignee) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
+            throw new ForbiddenOperationException(
                     "Only the author or assignee can change the task status"
             );
         }
