@@ -3,6 +3,7 @@ package com.adham.taskmanagement.account;
 import com.adham.taskmanagement.common.exception.ResourceConflictException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
 
@@ -20,6 +21,7 @@ public class AccountService {
         this.passwordEncoder = passwordEncoder;
     }
 
+    @Transactional
     public void register(RegisterAccountRequest request) {
 
         String normalizedEmail =

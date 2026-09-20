@@ -6,6 +6,7 @@ import com.adham.taskmanagement.comment.CommentRepository;
 import com.adham.taskmanagement.common.exception.ForbiddenOperationException;
 import com.adham.taskmanagement.common.exception.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
+@Transactional(readOnly = true)
 public class TaskService {
 
     private final TaskRepository taskRepository;
@@ -29,6 +31,7 @@ public class TaskService {
         this.commentRepository = commentRepository;
     }
 
+    @Transactional
     public TaskResponse createTask(
             CreateTaskRequest request,
             String authorEmail
@@ -121,6 +124,7 @@ public class TaskService {
                 .toList();
     }
 
+    @Transactional
     public TaskResponse assignTask(
             Long taskId,
             AssignTaskRequest request,
@@ -165,6 +169,7 @@ public class TaskService {
     }
 
 
+    @Transactional
     public TaskResponse updateStatus(
             Long taskId,
             UpdateTaskStatusRequest request,

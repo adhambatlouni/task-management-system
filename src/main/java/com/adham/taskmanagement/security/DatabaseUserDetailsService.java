@@ -1,14 +1,16 @@
 package com.adham.taskmanagement.security;
 
+import com.adham.taskmanagement.account.Account;
+import com.adham.taskmanagement.account.AccountRepository;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
-import com.adham.taskmanagement.account.Account;
-import com.adham.taskmanagement.account.AccountRepository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional(readOnly = true)
 public class DatabaseUserDetailsService implements UserDetailsService {
 
     private final AccountRepository accountRepository;
