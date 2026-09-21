@@ -60,9 +60,9 @@ class TaskManagementApiIntegrationTests {
     private EntityManagerFactory entityManagerFactory;
 
     @Test
-    void appliesTheInitialDatabaseMigration() {
+    void appliesAllDatabaseMigrations() {
         assertThat(flyway.info().current().getVersion().getVersion())
-                .isEqualTo("4");
+                .isEqualTo("6");
     }
 
     @Test
@@ -87,6 +87,14 @@ class TaskManagementApiIntegrationTests {
                 ).exists())
                 .andExpect(jsonPath(
                         "$['paths']['/api/tasks'].post.responses['400']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}']"
+                                + ".get.responses['200'].headers.ETag"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}']"
+                                + ".get.responses['404']"
                 ).exists())
                 .andExpect(jsonPath(
                         "$['paths']['/api/tasks/{taskId}/assign']"
@@ -118,6 +126,18 @@ class TaskManagementApiIntegrationTests {
                 ).exists())
                 .andExpect(jsonPath(
                         "$['paths']['/api/tasks/{taskId}/comments']"
+                                + ".get.responses['404']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/activities']"
+                                + ".get.responses['200']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/activities']"
+                                + ".get.responses['400']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/activities']"
                                 + ".get.responses['404']"
                 ).exists())
                 .andExpect(jsonPath(
@@ -217,6 +237,145 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(jsonPath("$.content[0].updated_at")
                         .isNotEmpty())
                 .andExpect(jsonPath("$.total_elements").value(1));
+    }
+
+    @Test
+    void recordsAndPaginatesTaskActivityHistory() throws Exception {
+        String owner = "activity-owner@example.com";
+        String assignee = "activity-assignee@example.com";
+
+        register(owner);
+        register(assignee);
+
+        String ownerToken = obtainToken(owner);
+        String assigneeToken = obtainToken(assignee);
+        CreatedTask task = createTask(ownerToken);
+
+        mockMvc.perform(get("/api/tasks/{taskId}", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        HttpHeaders.ETAG,
+                        entityTag(task.version())
+                ))
+                .andExpect(jsonPath("$.id").value(task.id()))
+                .andExpect(jsonPath("$.version").value(task.version()));
+
+        mockMvc.perform(get("/api/tasks/{taskId}/activities", task.id()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(put("/api/tasks/{taskId}/assign", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                        .header(HttpHeaders.IF_MATCH, entityTag(task.version()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "assignee": "%s"
+                                }
+                                """.formatted(assignee)))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, entityTag(1)));
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(assigneeToken))
+                        .header(HttpHeaders.IF_MATCH, entityTag(1))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "IN_PROGRESS"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, entityTag(2)));
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(assigneeToken))
+                        .header(HttpHeaders.IF_MATCH, entityTag(2))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "IN_PROGRESS"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, entityTag(2)))
+                .andExpect(jsonPath("$.version").value(2));
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(assigneeToken))
+                        .header(HttpHeaders.IF_MATCH, entityTag(1))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "COMPLETED"
+                                }
+                                """))
+                .andExpect(status().isPreconditionFailed());
+
+        mockMvc.perform(get("/api/tasks/{taskId}/activities", task.id())
+                        .param("page", "0")
+                        .param("size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].task_id")
+                        .value(task.id()))
+                .andExpect(jsonPath("$.content[0].type")
+                        .value("STATUS_CHANGED"))
+                .andExpect(jsonPath("$.content[0].actor")
+                        .value(assignee))
+                .andExpect(jsonPath("$.content[0].previous_value")
+                        .value("CREATED"))
+                .andExpect(jsonPath("$.content[0].new_value")
+                        .value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.content[0].task_version")
+                        .value(2))
+                .andExpect(jsonPath("$.content[0].created_at")
+                        .isNotEmpty())
+                .andExpect(jsonPath("$.content[1].type")
+                        .value("ASSIGNEE_CHANGED"))
+                .andExpect(jsonPath("$.content[1].actor")
+                        .value(owner))
+                .andExpect(jsonPath("$.content[1].previous_value")
+                        .value("none"))
+                .andExpect(jsonPath("$.content[1].new_value")
+                        .value(assignee))
+                .andExpect(jsonPath("$.content[1].task_version")
+                        .value(1))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.total_elements").value(3))
+                .andExpect(jsonPath("$.total_pages").value(2))
+                .andExpect(jsonPath("$.first").value(true))
+                .andExpect(jsonPath("$.last").value(false));
+
+        mockMvc.perform(get("/api/tasks/{taskId}/activities", task.id())
+                        .param("page", "1")
+                        .param("size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].type")
+                        .value("TASK_CREATED"))
+                .andExpect(jsonPath("$.content[0].actor")
+                        .value(owner))
+                .andExpect(jsonPath("$.content[0].new_value")
+                        .value("CREATED"))
+                .andExpect(jsonPath("$.content[0].task_version")
+                        .value(0))
+                .andExpect(jsonPath("$.last").value(true));
+
+        mockMvc.perform(get("/api/tasks/{taskId}/activities", task.id())
+                        .param("page", "-1")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail")
+                        .value("Page must be zero or greater"));
+
+        mockMvc.perform(get("/api/tasks/{taskId}/activities", 999999)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Task not found"));
     }
 
     @Test
@@ -346,6 +505,12 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.title")
                         .value("Resource not found"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Task not found"));
+
+        mockMvc.perform(get("/api/tasks/{taskId}", 999999)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail")
                         .value("Task not found"));
     }
