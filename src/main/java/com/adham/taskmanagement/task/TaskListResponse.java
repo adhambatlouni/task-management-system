@@ -15,6 +15,8 @@ public record TaskListResponse(
         @JsonProperty("total_comments")
         long totalComments,
 
+        long version,
+
         @JsonProperty("created_at")
         Instant createdAt,
 

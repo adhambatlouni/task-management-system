@@ -2,9 +2,11 @@ package com.adham.taskmanagement.task;
 
 import com.adham.taskmanagement.common.openapi.ApiProblemResponse;
 import com.adham.taskmanagement.common.openapi.OpenApiExamples;
+import com.adham.taskmanagement.common.web.EntityTagVersion;
 import com.adham.taskmanagement.common.web.PagedResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -13,6 +15,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -35,7 +38,12 @@ public class TaskController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Task created"
+                    description = "Task created",
+                    headers = @Header(
+                            name = HttpHeaders.ETAG,
+                            description = "Current task version",
+                            schema = @Schema(type = "string", example = "\"0\"")
+                    )
             ),
             @ApiResponse(
                     responseCode = "400",
@@ -76,7 +84,7 @@ public class TaskController {
                         authentication.getName()
                 );
 
-        return ResponseEntity.ok(response);
+        return versioned(response);
     }
 
     @PutMapping("/{taskId}/assign")
@@ -84,7 +92,12 @@ public class TaskController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Task assignment updated"
+                    description = "Task assignment updated",
+                    headers = @Header(
+                            name = HttpHeaders.ETAG,
+                            description = "Updated task version",
+                            schema = @Schema(type = "string", example = "\"1\"")
+                    )
             ),
             @ApiResponse(
                     responseCode = "400",
@@ -109,7 +122,7 @@ public class TaskController {
                             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ApiProblemResponse.class),
                             examples = @ExampleObject(
-                                    value = OpenApiExamples.FORBIDDEN
+                                    value = OpenApiExamples.ASSIGNMENT_FORBIDDEN
                             )
                     )
             ),
@@ -123,21 +136,51 @@ public class TaskController {
                                     value = OpenApiExamples.NOT_FOUND
                             )
                     )
+            ),
+            @ApiResponse(
+                    responseCode = "412",
+                    description = "The supplied task version is stale",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ApiProblemResponse.class),
+                            examples = @ExampleObject(
+                                    value = OpenApiExamples.ASSIGNMENT_PRECONDITION_FAILED
+                            )
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "428",
+                    description = "If-Match header is required",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ApiProblemResponse.class),
+                            examples = @ExampleObject(
+                                    value = OpenApiExamples.ASSIGNMENT_PRECONDITION_REQUIRED
+                            )
+                    )
             )
     })
     public ResponseEntity<TaskResponse> assignTask(
             @PathVariable Long taskId,
             @Valid @RequestBody AssignTaskRequest request,
+            @Parameter(
+                    description = "Quoted task version from the latest response",
+                    required = true,
+                    example = "\"0\""
+            )
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
             @Parameter(hidden = true) Authentication authentication
     ) {
 
         TaskResponse response = taskService.assignTask(
                 taskId,
                 request,
-                authentication.getName()
+                authentication.getName(),
+                EntityTagVersion.parseRequired(ifMatch)
         );
 
-        return ResponseEntity.ok(response);
+        return versioned(response);
     }
 
     @PutMapping("/{taskId}/status")
@@ -145,7 +188,12 @@ public class TaskController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Task status updated"
+                    description = "Task status updated",
+                    headers = @Header(
+                            name = HttpHeaders.ETAG,
+                            description = "Updated task version",
+                            schema = @Schema(type = "string", example = "\"2\"")
+                    )
             ),
             @ApiResponse(
                     responseCode = "400",
@@ -170,7 +218,7 @@ public class TaskController {
                             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ApiProblemResponse.class),
                             examples = @ExampleObject(
-                                    value = OpenApiExamples.FORBIDDEN
+                                    value = OpenApiExamples.STATUS_FORBIDDEN
                             )
                     )
             ),
@@ -184,21 +232,51 @@ public class TaskController {
                                     value = OpenApiExamples.NOT_FOUND
                             )
                     )
+            ),
+            @ApiResponse(
+                    responseCode = "412",
+                    description = "The supplied task version is stale",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ApiProblemResponse.class),
+                            examples = @ExampleObject(
+                                    value = OpenApiExamples.STATUS_PRECONDITION_FAILED
+                            )
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "428",
+                    description = "If-Match header is required",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ApiProblemResponse.class),
+                            examples = @ExampleObject(
+                                    value = OpenApiExamples.STATUS_PRECONDITION_REQUIRED
+                            )
+                    )
             )
     })
     public ResponseEntity<TaskResponse> updateStatus(
             @PathVariable Long taskId,
             @Valid @RequestBody UpdateTaskStatusRequest request,
+            @Parameter(
+                    description = "Quoted task version from the latest response",
+                    required = true,
+                    example = "\"1\""
+            )
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
             @Parameter(hidden = true) Authentication authentication
     ) {
 
         TaskResponse response = taskService.updateStatus(
                 taskId,
                 request,
-                authentication.getName()
+                authentication.getName(),
+                EntityTagVersion.parseRequired(ifMatch)
         );
 
-        return ResponseEntity.ok(response);
+        return versioned(response);
     }
 
     @GetMapping
@@ -241,5 +319,12 @@ public class TaskController {
                         sort
                 )
         );
+    }
+
+    private ResponseEntity<TaskResponse> versioned(TaskResponse response) {
+        return ResponseEntity
+                .ok()
+                .eTag(EntityTagVersion.format(response.version()))
+                .body(response);
     }
 }

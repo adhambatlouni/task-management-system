@@ -6,6 +6,7 @@ import com.adham.taskmanagement.comment.CommentCountProjection;
 import com.adham.taskmanagement.comment.CommentRepository;
 import com.adham.taskmanagement.common.exception.ForbiddenOperationException;
 import com.adham.taskmanagement.common.exception.InvalidRequestException;
+import com.adham.taskmanagement.common.exception.PreconditionFailedException;
 import com.adham.taskmanagement.common.exception.ResourceNotFoundException;
 import com.adham.taskmanagement.common.web.PagedResponse;
 import org.springframework.data.domain.Page;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -67,7 +69,7 @@ public class TaskService {
                 author
         );
 
-        Task savedTask = taskRepository.save(task);
+        Task savedTask = taskRepository.saveAndFlush(task);
 
         return toResponse(savedTask);
     }
@@ -209,7 +211,8 @@ public class TaskService {
     public TaskResponse assignTask(
             Long taskId,
             AssignTaskRequest request,
-            String currentUserEmail
+            String currentUserEmail,
+            long expectedVersion
     ) {
 
         Task task = taskRepository
@@ -227,11 +230,13 @@ public class TaskService {
             );
         }
 
+        verifyVersion(task, expectedVersion);
+
         if (request.assignee().equalsIgnoreCase("none")) {
 
             task.setAssignee(null);
 
-            Task savedTask = taskRepository.save(task);
+            Task savedTask = taskRepository.saveAndFlush(task);
 
             return toResponse(savedTask);
         }
@@ -244,7 +249,7 @@ public class TaskService {
 
         task.setAssignee(assignee);
 
-        Task savedTask = taskRepository.save(task);
+        Task savedTask = taskRepository.saveAndFlush(task);
 
         return toResponse(savedTask);
     }
@@ -254,7 +259,8 @@ public class TaskService {
     public TaskResponse updateStatus(
             Long taskId,
             UpdateTaskStatusRequest request,
-            String currentUserEmail
+            String currentUserEmail,
+            long expectedVersion
     ) {
 
         Task task = taskRepository
@@ -279,9 +285,11 @@ public class TaskService {
             );
         }
 
+        verifyVersion(task, expectedVersion);
+
         task.setStatus(request.status());
 
-        Task savedTask = taskRepository.save(task);
+        Task savedTask = taskRepository.saveAndFlush(task);
 
         return toResponse(savedTask);
     }
@@ -304,6 +312,7 @@ public class TaskService {
                         .getEmail()
                         .toLowerCase(Locale.ROOT),
                 assigneeEmail,
+                task.getVersion(),
                 task.getCreatedAt(),
                 task.getUpdatedAt()
         );
@@ -331,8 +340,17 @@ public class TaskService {
                         .toLowerCase(Locale.ROOT),
                 assigneeEmail,
                 totalComments,
+                task.getVersion(),
                 task.getCreatedAt(),
                 task.getUpdatedAt()
         );
+    }
+
+    private void verifyVersion(Task task, long expectedVersion) {
+        if (!Objects.equals(task.getVersion(), expectedVersion)) {
+            throw new PreconditionFailedException(
+                    "Task was modified by another request. Refresh it and try again"
+            );
+        }
     }
 }

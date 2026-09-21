@@ -1,6 +1,7 @@
 package com.adham.taskmanagement.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -64,6 +65,45 @@ public class ApiExceptionHandler {
                 HttpStatus.BAD_REQUEST,
                 "Invalid request",
                 exception.getMessage(),
+                request
+        );
+    }
+
+    @ExceptionHandler(PreconditionRequiredException.class)
+    public ResponseEntity<ProblemDetail> handlePreconditionRequired(
+            PreconditionRequiredException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.PRECONDITION_REQUIRED,
+                "Precondition required",
+                exception.getMessage(),
+                request
+        );
+    }
+
+    @ExceptionHandler(PreconditionFailedException.class)
+    public ResponseEntity<ProblemDetail> handlePreconditionFailed(
+            PreconditionFailedException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.PRECONDITION_FAILED,
+                "Precondition failed",
+                exception.getMessage(),
+                request
+        );
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(
+            OptimisticLockingFailureException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.PRECONDITION_FAILED,
+                "Precondition failed",
+                "Task was modified by another request. Refresh it and try again",
                 request
         );
     }
