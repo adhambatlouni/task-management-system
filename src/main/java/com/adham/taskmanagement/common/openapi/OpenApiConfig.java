@@ -16,7 +16,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Task Management API")
                         .description(
-                                "REST API for accounts, tasks, assignments, statuses, and comments"
+                                "REST API for accounts, tasks, assignments, statuses, comments, and activity history"
                         )
                         .version("1.0.0")
                 )

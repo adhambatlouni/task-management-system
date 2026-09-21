@@ -279,6 +279,41 @@ public class TaskController {
         return versioned(response);
     }
 
+    @GetMapping("/{taskId}")
+    @Operation(summary = "Get a task with its current version")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Task retrieved",
+                    headers = @Header(
+                            name = HttpHeaders.ETAG,
+                            description = "Current task version",
+                            schema = @Schema(type = "string", example = "\"2\"")
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Authentication required",
+                    content = @Content
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Task not found",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ApiProblemResponse.class),
+                            examples = @ExampleObject(
+                                    value = OpenApiExamples.TASK_NOT_FOUND
+                            )
+                    )
+            )
+    })
+    public ResponseEntity<TaskResponse> getTask(
+            @PathVariable Long taskId
+    ) {
+        return versioned(taskService.getTask(taskId));
+    }
+
     @GetMapping
     @Operation(summary = "List, filter, paginate, and sort tasks")
     @ApiResponses({

@@ -95,6 +95,33 @@ public final class OpenApiExamples {
             }
             """;
 
+    public static final String ACTIVITY_BAD_REQUEST = """
+            {
+              "title": "Invalid request",
+              "status": 400,
+              "detail": "Page must be zero or greater",
+              "instance": "/api/tasks/1/activities"
+            }
+            """;
+
+    public static final String ACTIVITY_NOT_FOUND = """
+            {
+              "title": "Resource not found",
+              "status": 404,
+              "detail": "Task not found",
+              "instance": "/api/tasks/999999/activities"
+            }
+            """;
+
+    public static final String TASK_NOT_FOUND = """
+            {
+              "title": "Resource not found",
+              "status": 404,
+              "detail": "Task not found",
+              "instance": "/api/tasks/999999"
+            }
+            """;
+
     private OpenApiExamples() {
     }
 }

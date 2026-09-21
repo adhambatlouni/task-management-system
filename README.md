@@ -3,7 +3,7 @@
 
 # Task Management System
 
-**A task workflow backend built around explicit authorization, versioned database migrations, real PostgreSQL integration tests, and reproducible delivery.**
+**A task workflow backend built around explicit authorization, immutable change history, real PostgreSQL integration tests, and reproducible delivery.**
 
 [![CI](https://github.com/adhambatlouni/task-management-system/actions/workflows/ci.yml/badge.svg)](https://github.com/adhambatlouni/task-management-system/actions/workflows/ci.yml)
 ![Java](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)
@@ -17,7 +17,7 @@
 
 ---
 
-Task Management System is a Spring Boot REST API for coordinating work between task authors and assignees. Users register, exchange credentials for a signed JWT, create and assign tasks, update status, discuss work through comments, and search the task catalogue with filtering, pagination, and sorting.
+Task Management System is a Spring Boot REST API for coordinating work between task authors and assignees. Users register, exchange credentials for a signed JWT, create and assign tasks, update status, discuss work through comments, inspect each task's activity timeline, and search the task catalogue with filtering, pagination, and sorting.
 
 The codebase stays compact while covering the concerns that make an API dependable: authorization inside the service layer, transactional writes, versioned PostgreSQL migrations, stable error contracts, externalized secrets, containerized execution, and integration tests that run through the real security and persistence stack.
 
@@ -28,6 +28,7 @@ The codebase stays compact while covering the concerns that make an API dependab
 | **Security** | Stateless Spring Security, BCrypt password hashing, Basic-to-JWT exchange, HS256 token validation |
 | **Authorization** | Authors control assignment; authors and current assignees control task status |
 | **Concurrency** | HTTP ETags and `If-Match` backed by JPA optimistic locking |
+| **Traceability** | Immutable, actor-attributed history for task creation, assignment, and status changes |
 | **Persistence** | PostgreSQL 18, JPA relationships, audit timestamps, indexed foreign keys |
 | **API contract** | Bean Validation, Problem Details, bounded pagination, controlled sorting, OpenAPI |
 | **Verification** | Full-context tests with MockMvc, Testcontainers, PostgreSQL, Flyway, and Spring Security |
@@ -154,7 +155,8 @@ Swagger UI exposes both authentication schemes and every request model.
 4. Create a task with `POST /api/tasks`; save its `id` and returned `ETag` value, initially `"0"`.
 5. Assign the second account with `PUT /api/tasks/{taskId}/assign` and send `If-Match: "0"`; save the new `ETag`.
 6. Obtain the assignee's token and use the latest `ETag` to update the task status. Comments do not change the task version.
-7. Execute `GET /api/tasks` to see the assignment, timestamps, and aggregated comment count.
+7. Execute `GET /api/tasks/{taskId}/activities` to inspect the immutable change timeline.
+8. Execute `GET /api/tasks` to see the assignment, timestamps, and aggregated comment count.
 
 The client sends only a title and description when creating a task. The backend derives the author from the verified JWT, sets the initial status to `CREATED`, and leaves the assignee empty.
 
@@ -171,6 +173,7 @@ Authentication identifies the caller. The service layer then applies the permiss
 | Change task status | Task author or current assignee |
 | List and filter tasks | Any authenticated user |
 | Add or read comments | Any authenticated user |
+| Read task activity history | Any authenticated user |
 
 Passwords are stored as BCrypt hashes. The JWT signing secret must contain at least 32 bytes, is supplied through configuration, and is never stored in the repository. Access tokens carry the authenticated email as their subject and include issued-at and expiry claims.
 
@@ -181,17 +184,21 @@ Passwords are stored as BCrypt hashes. The JWT signing secret must contain at le
 | `POST` | `/api/accounts` | Public | Register an account |
 | `POST` | `/api/auth/token` | Basic | Exchange credentials for a JWT |
 | `POST` | `/api/tasks` | Bearer | Create a task |
+| `GET` | `/api/tasks/{taskId}` | Bearer | Retrieve one task with its current `ETag` |
 | `GET` | `/api/tasks` | Bearer | Filter, paginate, and sort tasks |
 | `PUT` | `/api/tasks/{taskId}/assign` | Bearer + `If-Match` | Assign an account, or send `none` to unassign |
 | `PUT` | `/api/tasks/{taskId}/status` | Bearer + `If-Match` | Update task status |
 | `POST` | `/api/tasks/{taskId}/comments` | Bearer | Add a comment |
 | `GET` | `/api/tasks/{taskId}/comments` | Bearer | List comments newest first |
+| `GET` | `/api/tasks/{taskId}/activities` | Bearer | List immutable task changes newest first |
 
 Supported task statuses are `CREATED`, `IN_PROGRESS`, and `COMPLETED`. The database enforces the same set through a check constraint.
 
 ### Optimistic concurrency
 
 Every task response includes a numeric `version`. Creation and successful task mutations also return that version as a strong HTTP `ETag`.
+
+Clients returning to a task later retrieve it with `GET /api/tasks/{taskId}` and copy the response `ETag` into the next mutation's `If-Match` header. They do not need to remember the value from the original creation request.
 
 ```http
 PUT /api/tasks/1/status
@@ -205,6 +212,40 @@ Content-Type: application/json
 ```
 
 The update succeeds only while task `1` is still version `2`. A successful write increments it to version `3` and returns `ETag: "3"`. A stale `If-Match` receives `412 Precondition Failed`; omitting the header receives `428 Precondition Required`. JPA's `@Version` check also protects against another transaction committing during the update itself.
+
+### Task activity history
+
+Task creation, assignment changes, and status changes append immutable activity records in the same transaction as the task mutation. Rejected stale requests and operations that leave the task unchanged do not create misleading history.
+
+```http
+GET /api/tasks/1/activities?page=0&size=20
+Authorization: Bearer <access-token>
+```
+
+```json
+{
+  "content": [
+    {
+      "id": "3",
+      "task_id": "1",
+      "type": "STATUS_CHANGED",
+      "actor": "developer@example.com",
+      "previous_value": "CREATED",
+      "new_value": "IN_PROGRESS",
+      "task_version": 2,
+      "created_at": "2026-09-21T09:05:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "total_elements": 3,
+  "total_pages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+Activity types are `TASK_CREATED`, `ASSIGNEE_CHANGED`, and `STATUS_CHANGED`. `task_version` connects each event to the exact task version produced by that mutation. Results are ordered newest first and use the same page bounds as task listing.
 
 ### Filtering, pagination, and sorting
 
@@ -272,6 +313,8 @@ erDiagram
     ACCOUNTS o|--o{ TASKS : "is assigned"
     ACCOUNTS ||--o{ COMMENTS : writes
     TASKS ||--o{ COMMENTS : contains
+    ACCOUNTS ||--o{ TASK_ACTIVITIES : performs
+    TASKS ||--o{ TASK_ACTIVITIES : records
 
     ACCOUNTS {
         bigint id PK
@@ -301,6 +344,17 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
+
+    TASK_ACTIVITIES {
+        bigint id PK
+        bigint task_id FK
+        bigint actor_id FK
+        varchar type
+        varchar previous_value
+        varchar new_value
+        bigint task_version
+        timestamptz created_at
+    }
 ```
 
 Flyway owns schema evolution. Hibernate runs with `ddl-auto=validate`, so mapping drift fails at startup instead of silently changing the database.
@@ -311,6 +365,8 @@ Flyway owns schema evolution. Hibernate runs with `ddl-auto=validate`, so mappin
 | `V2__add_foreign_key_indexes.sql` | Indexes for task authors, assignees, and comment relationships |
 | `V3__add_entity_timestamps.sql` | `created_at` and `updated_at` audit columns |
 | `V4__add_task_version.sql` | Optimistic-lock version for concurrent task updates |
+| `V5__add_task_activity_history.sql` | Immutable, indexed task activity timeline |
+| `V6__backfill_task_creation_activities.sql` | Creation baselines for tasks that existed before activity tracking |
 
 Spring Data auditing writes timestamps for normal application saves. PostgreSQL defaults keep existing rows valid when the timestamp migration is first applied.
 
@@ -339,7 +395,7 @@ flowchart LR
     API[Controllers and services]
     JPA[Spring Data JPA]
     Database[(Disposable PostgreSQL 18)]
-    Flyway[Flyway V1 → V4]
+    Flyway[Flyway V1 → V6]
 
     Tests --> Security
     Security --> API
@@ -354,6 +410,7 @@ The tests cover:
 - Basic authentication and JWT issuance;
 - authenticated task creation and assignment permissions;
 - status authorization, version preconditions, stale-update rejection, comments, filters, and aggregate comment counts;
+- actor-attributed activity history, no-op suppression, pagination, and rejected-change exclusion;
 - timestamps, pagination, sorting, and invalid query parameters;
 - `400`, `401`, `403`, `404`, and `409` paths without stack-trace leakage;
 - the current Flyway version and generated OpenAPI contract.
@@ -368,6 +425,7 @@ GitHub Actions runs `./mvnw --batch-mode --no-transfer-progress verify` for ever
 | **Externally supplied signing key** | Secrets stay outside source control and token validation remains stable across application restarts |
 | **Authorization in services** | Permissions stay next to the operations and state they protect |
 | **ETag + `If-Match` + `@Version`** | Stale clients and racing transactions cannot silently overwrite newer task state |
+| **Append-only activity history** | Business changes retain their actor, before/after values, task version, and timestamp |
 | **Explicit transaction boundaries** | Writes remain atomic; read paths communicate intent with `readOnly = true` |
 | **Open Session in View disabled** | Database access stays inside the service layer |
 | **Flyway plus Hibernate validation** | Schema changes are repeatable and reviewable; entity/schema drift fails fast |
@@ -430,6 +488,7 @@ src/
 │   │   ├── account/       # registration and account persistence
 │   │   ├── task/          # workflow, querying, and authorization
 │   │   ├── comment/       # comments and aggregate projections
+│   │   ├── activity/      # immutable task change history
 │   │   ├── security/      # Basic auth, JWT, and the security chain
 │   │   └── common/        # auditing, errors, pagination, and OpenAPI
 │   └── resources/

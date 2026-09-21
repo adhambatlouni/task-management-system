@@ -2,6 +2,7 @@ package com.adham.taskmanagement.task;
 
 import com.adham.taskmanagement.account.Account;
 import com.adham.taskmanagement.account.AccountRepository;
+import com.adham.taskmanagement.activity.TaskActivityService;
 import com.adham.taskmanagement.comment.CommentCountProjection;
 import com.adham.taskmanagement.comment.CommentRepository;
 import com.adham.taskmanagement.common.exception.ForbiddenOperationException;
@@ -39,15 +40,18 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final AccountRepository accountRepository;
     private final CommentRepository commentRepository;
+    private final TaskActivityService activityService;
 
     public TaskService(
             TaskRepository taskRepository,
             AccountRepository accountRepository,
-            CommentRepository commentRepository
+            CommentRepository commentRepository,
+            TaskActivityService activityService
     ) {
         this.taskRepository = taskRepository;
         this.accountRepository = accountRepository;
         this.commentRepository = commentRepository;
+        this.activityService = activityService;
     }
 
     @Transactional
@@ -70,6 +74,8 @@ public class TaskService {
         );
 
         Task savedTask = taskRepository.saveAndFlush(task);
+
+        activityService.recordTaskCreated(savedTask, author);
 
         return toResponse(savedTask);
     }
@@ -134,6 +140,16 @@ public class TaskService {
                         )
                 )
         );
+    }
+
+    public TaskResponse getTask(Long taskId) {
+        Task task = taskRepository
+                .findById(taskId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Task not found")
+                );
+
+        return toResponse(task);
     }
 
     private Map<Long, Long> getCommentCounts(List<Task> tasks) {
@@ -232,24 +248,29 @@ public class TaskService {
 
         verifyVersion(task, expectedVersion);
 
-        if (request.assignee().equalsIgnoreCase("none")) {
-
-            task.setAssignee(null);
-
-            Task savedTask = taskRepository.saveAndFlush(task);
-
-            return toResponse(savedTask);
-        }
-
-        Account assignee = accountRepository
+        Account previousAssignee = task.getAssignee();
+        Account newAssignee = request.assignee().equalsIgnoreCase("none")
+                ? null
+                : accountRepository
                 .findByEmailIgnoreCase(request.assignee())
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Assignee not found")
                 );
 
-        task.setAssignee(assignee);
+        if (sameAccount(previousAssignee, newAssignee)) {
+            return toResponse(task);
+        }
+
+        task.setAssignee(newAssignee);
 
         Task savedTask = taskRepository.saveAndFlush(task);
+
+        activityService.recordAssigneeChanged(
+                savedTask,
+                savedTask.getAuthor(),
+                accountEmail(previousAssignee),
+                accountEmail(newAssignee)
+        );
 
         return toResponse(savedTask);
     }
@@ -287,9 +308,25 @@ public class TaskService {
 
         verifyVersion(task, expectedVersion);
 
+        if (task.getStatus() == request.status()) {
+            return toResponse(task);
+        }
+
+        TaskStatus previousStatus = task.getStatus();
+        Account actor = isAuthor
+                ? task.getAuthor()
+                : task.getAssignee();
+
         task.setStatus(request.status());
 
         Task savedTask = taskRepository.saveAndFlush(task);
+
+        activityService.recordStatusChanged(
+                savedTask,
+                actor,
+                previousStatus,
+                savedTask.getStatus()
+        );
 
         return toResponse(savedTask);
     }
@@ -352,5 +389,19 @@ public class TaskService {
                     "Task was modified by another request. Refresh it and try again"
             );
         }
+    }
+
+    private boolean sameAccount(Account first, Account second) {
+        if (first == null || second == null) {
+            return first == second;
+        }
+
+        return Objects.equals(first.getId(), second.getId());
+    }
+
+    private String accountEmail(Account account) {
+        return account == null
+                ? "none"
+                : account.getEmail().toLowerCase(Locale.ROOT);
     }
 }
