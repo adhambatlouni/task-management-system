@@ -27,6 +27,7 @@ The codebase stays compact while covering the concerns that make an API dependab
 |---|---|
 | **Security** | Stateless Spring Security, BCrypt password hashing, Basic-to-JWT exchange, HS256 token validation |
 | **Authorization** | Authors control assignment; authors and current assignees control task status |
+| **Concurrency** | HTTP ETags and `If-Match` backed by JPA optimistic locking |
 | **Persistence** | PostgreSQL 18, JPA relationships, audit timestamps, indexed foreign keys |
 | **API contract** | Bean Validation, Problem Details, bounded pagination, controlled sorting, OpenAPI |
 | **Verification** | Full-context tests with MockMvc, Testcontainers, PostgreSQL, Flyway, and Spring Security |
@@ -150,9 +151,9 @@ Swagger UI exposes both authentication schemes and every request model.
 1. Execute `POST /api/accounts` twice to create an owner and an assignee.
 2. Select **Authorize**, enter the owner's credentials under `basicAuth`, and execute `POST /api/auth/token`.
 3. Copy the returned token, select **Authorize** again, and enter it under `bearerAuth`.
-4. Create a task with `POST /api/tasks` and save the returned `id`.
-5. Assign the second account with `PUT /api/tasks/{taskId}/assign`.
-6. Obtain the assignee's token and use it to update the task status or add a comment.
+4. Create a task with `POST /api/tasks`; save its `id` and returned `ETag` value, initially `"0"`.
+5. Assign the second account with `PUT /api/tasks/{taskId}/assign` and send `If-Match: "0"`; save the new `ETag`.
+6. Obtain the assignee's token and use the latest `ETag` to update the task status. Comments do not change the task version.
 7. Execute `GET /api/tasks` to see the assignment, timestamps, and aggregated comment count.
 
 The client sends only a title and description when creating a task. The backend derives the author from the verified JWT, sets the initial status to `CREATED`, and leaves the assignee empty.
@@ -181,12 +182,29 @@ Passwords are stored as BCrypt hashes. The JWT signing secret must contain at le
 | `POST` | `/api/auth/token` | Basic | Exchange credentials for a JWT |
 | `POST` | `/api/tasks` | Bearer | Create a task |
 | `GET` | `/api/tasks` | Bearer | Filter, paginate, and sort tasks |
-| `PUT` | `/api/tasks/{taskId}/assign` | Bearer | Assign an account, or send `none` to unassign |
-| `PUT` | `/api/tasks/{taskId}/status` | Bearer | Update task status |
+| `PUT` | `/api/tasks/{taskId}/assign` | Bearer + `If-Match` | Assign an account, or send `none` to unassign |
+| `PUT` | `/api/tasks/{taskId}/status` | Bearer + `If-Match` | Update task status |
 | `POST` | `/api/tasks/{taskId}/comments` | Bearer | Add a comment |
 | `GET` | `/api/tasks/{taskId}/comments` | Bearer | List comments newest first |
 
 Supported task statuses are `CREATED`, `IN_PROGRESS`, and `COMPLETED`. The database enforces the same set through a check constraint.
+
+### Optimistic concurrency
+
+Every task response includes a numeric `version`. Creation and successful task mutations also return that version as a strong HTTP `ETag`.
+
+```http
+PUT /api/tasks/1/status
+Authorization: Bearer <access-token>
+If-Match: "2"
+Content-Type: application/json
+
+{
+  "status": "IN_PROGRESS"
+}
+```
+
+The update succeeds only while task `1` is still version `2`. A successful write increments it to version `3` and returns `ETag: "3"`. A stale `If-Match` receives `412 Precondition Failed`; omitting the header receives `428 Precondition Required`. JPA's `@Version` check also protects against another transaction committing during the update itself.
 
 ### Filtering, pagination, and sorting
 
@@ -216,6 +234,7 @@ Allowed sort fields are `id`, `title`, `status`, `created_at`, and `updated_at`.
       "author": "owner@example.com",
       "assignee": "developer@example.com",
       "total_comments": 1,
+      "version": 2,
       "created_at": "2026-09-21T09:00:00Z",
       "updated_at": "2026-09-21T09:05:00Z"
     }
@@ -243,7 +262,7 @@ Domain and validation failures use `application/problem+json`. Clients receive a
 }
 ```
 
-Field-validation failures add an `errors` object keyed by field name. The API distinguishes invalid input (`400`), missing or invalid authentication (`401`), forbidden operations (`403`), missing resources (`404`), and resource conflicts (`409`).
+Field-validation failures add an `errors` object keyed by field name. The API distinguishes invalid input (`400`), missing or invalid authentication (`401`), forbidden operations (`403`), missing resources (`404`), resource conflicts (`409`), stale versions (`412`), and missing update preconditions (`428`).
 
 ## Data model and migrations
 
@@ -269,6 +288,7 @@ erDiagram
         varchar status
         bigint author_id FK
         bigint assignee_id FK
+        bigint version
         timestamptz created_at
         timestamptz updated_at
     }
@@ -290,6 +310,7 @@ Flyway owns schema evolution. Hibernate runs with `ddl-auto=validate`, so mappin
 | `V1__create_initial_schema.sql` | Accounts, tasks, comments, constraints, and relationships |
 | `V2__add_foreign_key_indexes.sql` | Indexes for task authors, assignees, and comment relationships |
 | `V3__add_entity_timestamps.sql` | `created_at` and `updated_at` audit columns |
+| `V4__add_task_version.sql` | Optimistic-lock version for concurrent task updates |
 
 Spring Data auditing writes timestamps for normal application saves. PostgreSQL defaults keep existing rows valid when the timestamp migration is first applied.
 
@@ -318,7 +339,7 @@ flowchart LR
     API[Controllers and services]
     JPA[Spring Data JPA]
     Database[(Disposable PostgreSQL 18)]
-    Flyway[Flyway V1 → V3]
+    Flyway[Flyway V1 → V4]
 
     Tests --> Security
     Security --> API
@@ -332,7 +353,7 @@ The tests cover:
 - registration, duplicate-email conflicts, and request validation;
 - Basic authentication and JWT issuance;
 - authenticated task creation and assignment permissions;
-- status authorization, comments, filters, and aggregate comment counts;
+- status authorization, version preconditions, stale-update rejection, comments, filters, and aggregate comment counts;
 - timestamps, pagination, sorting, and invalid query parameters;
 - `400`, `401`, `403`, `404`, and `409` paths without stack-trace leakage;
 - the current Flyway version and generated OpenAPI contract.
@@ -346,6 +367,7 @@ GitHub Actions runs `./mvnw --batch-mode --no-transfer-progress verify` for ever
 | **Basic auth only for token issuance** | Credentials are exchanged once; normal API requests use expiring bearer tokens |
 | **Externally supplied signing key** | Secrets stay outside source control and token validation remains stable across application restarts |
 | **Authorization in services** | Permissions stay next to the operations and state they protect |
+| **ETag + `If-Match` + `@Version`** | Stale clients and racing transactions cannot silently overwrite newer task state |
 | **Explicit transaction boundaries** | Writes remain atomic; read paths communicate intent with `readOnly = true` |
 | **Open Session in View disabled** | Database access stays inside the service layer |
 | **Flyway plus Hibernate validation** | Schema changes are repeatable and reviewable; entity/schema drift fails fast |

@@ -30,6 +30,10 @@ public class Task extends AuditableEntity {
     @JoinColumn(name = "assignee_id")
     private Account assignee;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     public Task() {
     }
 
@@ -67,6 +71,10 @@ public class Task extends AuditableEntity {
 
     public Account getAssignee() {
         return assignee;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     public void setTitle(String title) {

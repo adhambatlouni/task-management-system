@@ -11,6 +11,7 @@ public record TaskResponse(
         TaskStatus status,
         String author,
         String assignee,
+        long version,
 
         @JsonProperty("created_at")
         Instant createdAt,

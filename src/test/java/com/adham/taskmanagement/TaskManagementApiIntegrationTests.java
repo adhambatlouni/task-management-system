@@ -1,6 +1,13 @@
 package com.adham.taskmanagement;
 
+import com.adham.taskmanagement.task.Task;
+import com.adham.taskmanagement.task.TaskStatus;
 import com.jayway.jsonpath.JsonPath;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.RollbackException;
 import org.junit.jupiter.api.Test;
 import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,11 +23,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -47,10 +56,13 @@ class TaskManagementApiIntegrationTests {
     @Autowired
     private Flyway flyway;
 
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
+
     @Test
     void appliesTheInitialDatabaseMigration() {
         assertThat(flyway.info().current().getVersion().getVersion())
-                .isEqualTo("3");
+                .isEqualTo("4");
     }
 
     @Test
@@ -80,6 +92,22 @@ class TaskManagementApiIntegrationTests {
                         "$['paths']['/api/tasks/{taskId}/assign']"
                                 + ".put.responses['403']"
                 ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/assign']"
+                                + ".put.responses['412']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/status']"
+                                + ".put.responses['428']"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/status']"
+                                + ".put.responses['200'].headers.ETag"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/status']"
+                                + ".put.parameters[?(@.name == 'If-Match')]"
+                ).isNotEmpty())
                 .andExpect(jsonPath(
                         "$['paths']['/api/tasks/{taskId}/status']"
                                 + ".put.responses['404']"
@@ -120,10 +148,11 @@ class TaskManagementApiIntegrationTests {
         String ownerToken = obtainToken(owner);
         String assigneeToken = obtainToken(assignee);
 
-        String taskId = createTask(ownerToken);
+        CreatedTask task = createTask(ownerToken);
 
-        mockMvc.perform(put("/api/tasks/{taskId}/assign", taskId)
+        mockMvc.perform(put("/api/tasks/{taskId}/assign", task.id())
                         .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken))
+                        .header(HttpHeaders.IF_MATCH, entityTag(task.version()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -131,10 +160,13 @@ class TaskManagementApiIntegrationTests {
                                 }
                                 """.formatted(assignee)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assignee").value(assignee));
+                .andExpect(header().string(HttpHeaders.ETAG, entityTag(1)))
+                .andExpect(jsonPath("$.assignee").value(assignee))
+                .andExpect(jsonPath("$.version").value(1));
 
-        mockMvc.perform(put("/api/tasks/{taskId}/status", taskId)
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
                         .header(HttpHeaders.AUTHORIZATION, bearer(assigneeToken))
+                        .header(HttpHeaders.IF_MATCH, entityTag(1))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -142,9 +174,11 @@ class TaskManagementApiIntegrationTests {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+                .andExpect(header().string(HttpHeaders.ETAG, entityTag(2)))
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.version").value(2));
 
-        mockMvc.perform(post("/api/tasks/{taskId}/comments", taskId)
+        mockMvc.perform(post("/api/tasks/{taskId}/comments", task.id())
                         .header(HttpHeaders.AUTHORIZATION, bearer(assigneeToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -154,10 +188,10 @@ class TaskManagementApiIntegrationTests {
                                 """))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/tasks/{taskId}/comments", taskId)
+        mockMvc.perform(get("/api/tasks/{taskId}/comments", task.id())
                         .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].task_id").value(taskId))
+                .andExpect(jsonPath("$[0].task_id").value(task.id()))
                 .andExpect(jsonPath("$[0].text")
                         .value("Authentication has been verified"))
                 .andExpect(jsonPath("$[0].author").value(assignee))
@@ -169,7 +203,7 @@ class TaskManagementApiIntegrationTests {
                         .param("assignee", assignee)
                         .header(HttpHeaders.AUTHORIZATION, bearer(ownerToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(taskId))
+                .andExpect(jsonPath("$.content[0].id").value(task.id()))
                 .andExpect(jsonPath("$.content[0].status")
                         .value("IN_PROGRESS"))
                 .andExpect(jsonPath("$.content[0].author").value(owner))
@@ -177,6 +211,7 @@ class TaskManagementApiIntegrationTests {
                         .value(assignee))
                 .andExpect(jsonPath("$.content[0].total_comments")
                         .value(1))
+                .andExpect(jsonPath("$.content[0].version").value(2))
                 .andExpect(jsonPath("$.content[0].created_at")
                         .isNotEmpty())
                 .andExpect(jsonPath("$.content[0].updated_at")
@@ -191,9 +226,9 @@ class TaskManagementApiIntegrationTests {
         register(owner);
         String token = obtainToken(owner);
 
-        String firstTaskId = createTask(token);
-        String secondTaskId = createTask(token);
-        String thirdTaskId = createTask(token);
+        String firstTaskId = createTask(token).id();
+        String secondTaskId = createTask(token).id();
+        String thirdTaskId = createTask(token).id();
 
         mockMvc.perform(get("/api/tasks")
                         .param("author", owner)
@@ -289,10 +324,11 @@ class TaskManagementApiIntegrationTests {
 
         String ownerToken = obtainToken(owner);
         String assigneeToken = obtainToken(assignee);
-        String taskId = createTask(ownerToken);
+        CreatedTask task = createTask(ownerToken);
 
-        mockMvc.perform(put("/api/tasks/{taskId}/assign", taskId)
+        mockMvc.perform(put("/api/tasks/{taskId}/assign", task.id())
                         .header(HttpHeaders.AUTHORIZATION, bearer(assigneeToken))
+                        .header(HttpHeaders.IF_MATCH, entityTag(task.version()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -312,6 +348,143 @@ class TaskManagementApiIntegrationTests {
                         .value("Resource not found"))
                 .andExpect(jsonPath("$.detail")
                         .value("Task not found"));
+    }
+
+    @Test
+    void rejectsMissingMalformedAndStaleTaskVersions() throws Exception {
+        String owner = "version-owner@example.com";
+
+        register(owner);
+        String token = obtainToken(owner);
+        CreatedTask task = createTask(token);
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "IN_PROGRESS"
+                                }
+                                """))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title")
+                        .value("Precondition required"))
+                .andExpect(jsonPath("$.detail")
+                        .value("If-Match header is required"));
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .header(HttpHeaders.IF_MATCH, "0")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "IN_PROGRESS"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Invalid request"))
+                .andExpect(jsonPath("$.detail").value(
+                        "If-Match must contain one quoted, non-negative task version"
+                ));
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .header(HttpHeaders.IF_MATCH, entityTag(task.version()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "IN_PROGRESS"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, entityTag(1)))
+                .andExpect(jsonPath("$.version").value(1));
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .header(HttpHeaders.IF_MATCH, entityTag(task.version()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "COMPLETED"
+                                }
+                                """))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title")
+                        .value("Precondition failed"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Task was modified by another request. Refresh it and try again"
+                ))
+                .andExpect(jsonPath("$.instance")
+                        .value("/api/tasks/" + task.id() + "/status"));
+
+        mockMvc.perform(get("/api/tasks")
+                        .param("author", owner)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status")
+                        .value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.content[0].version").value(1));
+    }
+
+    @Test
+    void preventsRacingDatabaseTransactionsFromOverwritingEachOther()
+            throws Exception {
+        String owner = "concurrency-owner@example.com";
+
+        register(owner);
+        String token = obtainToken(owner);
+        CreatedTask createdTask = createTask(token);
+        Long taskId = Long.valueOf(createdTask.id());
+
+        EntityManager firstEntityManager =
+                entityManagerFactory.createEntityManager();
+        EntityManager secondEntityManager =
+                entityManagerFactory.createEntityManager();
+        EntityTransaction firstTransaction =
+                firstEntityManager.getTransaction();
+        EntityTransaction secondTransaction =
+                secondEntityManager.getTransaction();
+
+        try {
+            firstTransaction.begin();
+            secondTransaction.begin();
+
+            Task firstCopy = firstEntityManager.find(Task.class, taskId);
+            Task secondCopy = secondEntityManager.find(Task.class, taskId);
+
+            firstCopy.setStatus(TaskStatus.IN_PROGRESS);
+            secondCopy.setStatus(TaskStatus.COMPLETED);
+
+            firstTransaction.commit();
+
+            assertThatThrownBy(secondTransaction::commit)
+                    .isInstanceOf(RollbackException.class)
+                    .hasCauseInstanceOf(OptimisticLockException.class);
+        } finally {
+            if (firstTransaction.isActive()) {
+                firstTransaction.rollback();
+            }
+            if (secondTransaction.isActive()) {
+                secondTransaction.rollback();
+            }
+            firstEntityManager.close();
+            secondEntityManager.close();
+        }
+
+        mockMvc.perform(get("/api/tasks")
+                        .param("author", owner)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status")
+                        .value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.content[0].version").value(1));
     }
 
     private void register(String email) throws Exception {
@@ -334,7 +507,7 @@ class TaskManagementApiIntegrationTests {
         );
     }
 
-    private String createTask(String token) throws Exception {
+    private CreatedTask createTask(String token) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tasks")
                         .header(HttpHeaders.AUTHORIZATION, bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -345,16 +518,20 @@ class TaskManagementApiIntegrationTests {
                                 }
                                 """))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, entityTag(0)))
                 .andExpect(jsonPath("$.status").value("CREATED"))
                 .andExpect(jsonPath("$.assignee").value("none"))
+                .andExpect(jsonPath("$.version").value(0))
                 .andExpect(jsonPath("$.created_at").isNotEmpty())
                 .andExpect(jsonPath("$.updated_at").isNotEmpty())
                 .andReturn();
 
-        return JsonPath.read(
-                result.getResponse().getContentAsString(),
-                "$.id"
-        );
+        String responseBody = result.getResponse().getContentAsString();
+
+        String id = JsonPath.read(responseBody, "$.id");
+        Number version = JsonPath.read(responseBody, "$.version");
+
+        return new CreatedTask(id, version.longValue());
     }
 
     private String registrationJson(String email) {
@@ -368,6 +545,13 @@ class TaskManagementApiIntegrationTests {
 
     private String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    private String entityTag(long version) {
+        return "\"" + version + "\"";
+    }
+
+    private record CreatedTask(String id, long version) {
     }
 
 }

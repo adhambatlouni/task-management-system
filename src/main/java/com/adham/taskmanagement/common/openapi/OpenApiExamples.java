@@ -23,7 +23,7 @@ public final class OpenApiExamples {
             }
             """;
 
-    public static final String FORBIDDEN = """
+    public static final String ASSIGNMENT_FORBIDDEN = """
             {
               "title": "Forbidden operation",
               "status": 403,
@@ -47,6 +47,51 @@ public final class OpenApiExamples {
               "status": 409,
               "detail": "Email already exists",
               "instance": "/api/accounts"
+            }
+            """;
+
+    public static final String STATUS_FORBIDDEN = """
+            {
+              "title": "Forbidden operation",
+              "status": 403,
+              "detail": "Only the author or assignee can change the task status",
+              "instance": "/api/tasks/1/status"
+            }
+            """;
+
+    public static final String ASSIGNMENT_PRECONDITION_FAILED = """
+            {
+              "title": "Precondition failed",
+              "status": 412,
+              "detail": "Task was modified by another request. Refresh it and try again",
+              "instance": "/api/tasks/1/assign"
+            }
+            """;
+
+    public static final String ASSIGNMENT_PRECONDITION_REQUIRED = """
+            {
+              "title": "Precondition required",
+              "status": 428,
+              "detail": "If-Match header is required",
+              "instance": "/api/tasks/1/assign"
+            }
+            """;
+
+    public static final String STATUS_PRECONDITION_FAILED = """
+            {
+              "title": "Precondition failed",
+              "status": 412,
+              "detail": "Task was modified by another request. Refresh it and try again",
+              "instance": "/api/tasks/1/status"
+            }
+            """;
+
+    public static final String STATUS_PRECONDITION_REQUIRED = """
+            {
+              "title": "Precondition required",
+              "status": 428,
+              "detail": "If-Match header is required",
+              "instance": "/api/tasks/1/status"
             }
             """;
 
