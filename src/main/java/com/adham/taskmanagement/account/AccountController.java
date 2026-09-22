@@ -19,7 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/accounts")
-@Tag(name = "Accounts", description = "Account registration")
+@Tag(
+        name = "Accounts",
+        description = "Create an account with a unique email address"
+)
 public class AccountController {
 
     private final AccountService accountService;
@@ -28,8 +31,11 @@ public class AccountController {
         this.accountService = accountService;
     }
 
-    @PostMapping
-    @Operation(summary = "Register an account")
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(
+            summary = "Register an account",
+            description = "Creates an account with a normalized unique email and a BCrypt-hashed password."
+    )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -43,7 +49,7 @@ public class AccountController {
                             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ApiProblemResponse.class),
                             examples = @ExampleObject(
-                                    value = OpenApiExamples.VALIDATION_ERROR
+                                    value = OpenApiExamples.REGISTRATION_VALIDATION
                             )
                     )
             ),
