@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,8 +15,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/auth")
-@Tag(name = "Authentication", description = "JWT access-token creation")
+@RequestMapping(
+        value = "/api/auth",
+        produces = MediaType.APPLICATION_JSON_VALUE
+)
+@Tag(
+        name = "Authentication",
+        description = "Exchange account credentials for a signed JWT access token"
+)
 public class AuthController {
 
     private final TokenService tokenService;
@@ -27,6 +34,7 @@ public class AuthController {
     @PostMapping("/token")
     @Operation(
             summary = "Create a JWT access token",
+            description = "Authenticates a registered account with HTTP Basic credentials and returns a signed bearer token.",
             security = @SecurityRequirement(name = "basicAuth")
     )
     @ApiResponses({

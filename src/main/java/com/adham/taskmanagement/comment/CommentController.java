@@ -20,8 +20,14 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/tasks/{taskId}/comments")
-@Tag(name = "Comments", description = "Task comments")
+@RequestMapping(
+        value = "/api/tasks/{taskId}/comments",
+        produces = MediaType.APPLICATION_JSON_VALUE
+)
+@Tag(
+        name = "Comments",
+        description = "Add and retrieve comments attached to tasks"
+)
 @SecurityRequirement(name = "bearerAuth")
 public class CommentController {
 
@@ -31,8 +37,11 @@ public class CommentController {
         this.commentService = commentService;
     }
 
-    @PostMapping
-    @Operation(summary = "Add a comment to a task")
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(
+            summary = "Add a comment to a task",
+            description = "Adds a comment attributed to the authenticated account."
+    )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -46,7 +55,7 @@ public class CommentController {
                             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ApiProblemResponse.class),
                             examples = @ExampleObject(
-                                    value = OpenApiExamples.VALIDATION_ERROR
+                                    value = OpenApiExamples.COMMENT_VALIDATION
                             )
                     )
             ),
@@ -62,12 +71,13 @@ public class CommentController {
                             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ApiProblemResponse.class),
                             examples = @ExampleObject(
-                                    value = OpenApiExamples.NOT_FOUND
+                                    value = OpenApiExamples.COMMENT_TASK_NOT_FOUND
                             )
                     )
             )
     })
     public ResponseEntity<Void> createComment(
+            @Parameter(description = "Task identifier", example = "42")
             @PathVariable Long taskId,
             @Valid @RequestBody CreateCommentRequest request,
             @Parameter(hidden = true) Authentication authentication
@@ -83,7 +93,10 @@ public class CommentController {
     }
 
     @GetMapping
-    @Operation(summary = "List comments for a task")
+    @Operation(
+            summary = "List comments for a task",
+            description = "Returns the task's comments in newest-first order."
+    )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -101,12 +114,13 @@ public class CommentController {
                             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ApiProblemResponse.class),
                             examples = @ExampleObject(
-                                    value = OpenApiExamples.NOT_FOUND
+                                    value = OpenApiExamples.COMMENT_TASK_NOT_FOUND
                             )
                     )
             )
     })
     public ResponseEntity<List<CommentResponse>> getComments(
+            @Parameter(description = "Task identifier", example = "42")
             @PathVariable Long taskId
     ) {
 

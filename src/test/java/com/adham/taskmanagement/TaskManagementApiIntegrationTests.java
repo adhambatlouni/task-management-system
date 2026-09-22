@@ -39,7 +39,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=test",
         "app.security.jwt.secret-base64="
                 + "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=",
-        "app.security.jwt.access-token-ttl=1h"
+        "app.security.jwt.access-token-ttl=1h",
+        "app.openapi.server-url=https://api.example.com"
 })
 class TaskManagementApiIntegrationTests {
 
@@ -91,6 +92,36 @@ class TaskManagementApiIntegrationTests {
                 ))
                 .andExpect(jsonPath("$.info.title")
                         .value("Task Management API"))
+                .andExpect(jsonPath("$.info.description")
+                        .value(org.hamcrest.Matchers.containsString(
+                                "Start here"
+                        )))
+                .andExpect(jsonPath("$.info.contact.name")
+                        .value("Adham Batlouni"))
+                .andExpect(jsonPath("$.externalDocs.url").value(
+                        "https://github.com/adhambatlouni/"
+                                + "task-management-system"
+                ))
+                .andExpect(jsonPath("$.servers[0].url")
+                        .value("https://api.example.com"))
+                .andExpect(jsonPath("$.servers[0].description")
+                        .value("Production API"))
+                .andExpect(jsonPath("$.tags[0].name")
+                        .value("Accounts"))
+                .andExpect(jsonPath("$.tags[1].name")
+                        .value("Authentication"))
+                .andExpect(jsonPath("$.tags[2].name")
+                        .value("Tasks"))
+                .andExpect(jsonPath("$.tags[3].name")
+                        .value("Comments"))
+                .andExpect(jsonPath("$.tags[4].name")
+                        .value("Task activities"))
+                .andExpect(jsonPath("$.tags[4].description")
+                        .value(org.hamcrest.Matchers.containsString(
+                                "append-only"
+                        )))
+                .andExpect(jsonPath("$['paths']['/']")
+                        .doesNotExist())
                 .andExpect(jsonPath("$['paths']['/api/tasks']")
                         .exists())
                 .andExpect(jsonPath(
@@ -108,6 +139,16 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(jsonPath(
                         "$['paths']['/api/tasks/{taskId}']"
                                 + ".get.responses['200'].headers.ETag"
+                ).exists())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}']"
+                                + ".get.responses['200'].headers.ETag"
+                                + ".schema.example"
+                ).value("\"2\""))
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}']"
+                                + ".get.responses['200'].content"
+                                + "['application/json']"
                 ).exists())
                 .andExpect(jsonPath(
                         "$['paths']['/api/tasks/{taskId}']"
@@ -133,6 +174,11 @@ class TaskManagementApiIntegrationTests {
                         "$['paths']['/api/tasks/{taskId}/status']"
                                 + ".put.parameters[?(@.name == 'If-Match')]"
                 ).isNotEmpty())
+                .andExpect(jsonPath(
+                        "$['paths']['/api/tasks/{taskId}/status']"
+                                + ".put.parameters[?(@.name == 'If-Match')]"
+                                + ".example"
+                ).value("\"1\""))
                 .andExpect(jsonPath(
                         "$['paths']['/api/tasks/{taskId}/status']"
                                 + ".put.responses['404']"
@@ -161,8 +207,23 @@ class TaskManagementApiIntegrationTests {
                         "$.components.securitySchemes.bearerAuth"
                 ).exists())
                 .andExpect(jsonPath(
+                        "$.components.securitySchemes.bearerAuth.description"
+                ).isNotEmpty())
+                .andExpect(jsonPath(
                         "$.components.securitySchemes.basicAuth"
                 ).exists())
+                .andExpect(jsonPath(
+                        "$.components.schemas.RegisterAccountRequest"
+                                + ".properties.password.format"
+                ).value("password"))
+                .andExpect(jsonPath(
+                        "$.components.schemas.RegisterAccountRequest"
+                                + ".properties.password.writeOnly"
+                ).value(true))
+                .andExpect(jsonPath(
+                        "$.components.schemas.TaskResponse"
+                                + ".properties.version.description"
+                ).value(org.hamcrest.Matchers.containsString("ETag")))
                 .andExpect(jsonPath(
                         "$.components.schemas.ApiProblem.properties.title"
                 ).exists())
@@ -172,6 +233,42 @@ class TaskManagementApiIntegrationTests {
                 .andExpect(jsonPath(
                         "$.components.schemas.ApiProblem.properties.properties"
                 ).doesNotExist());
+    }
+
+    @Test
+    void returnsStableProblemDetailsForUnsupportedRequestValues()
+            throws Exception {
+        String owner = "invalid-status-owner@example.com";
+
+        register(owner);
+        String token = obtainToken(owner);
+        CreatedTask task = createTask(token);
+
+        mockMvc.perform(put("/api/tasks/{taskId}/status", task.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .header(
+                                HttpHeaders.IF_MATCH,
+                                entityTag(task.version())
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "NOT_A_STATUS"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title")
+                        .value("Invalid request"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Request body is malformed or contains an unsupported value"
+                ))
+                .andExpect(jsonPath("$.instance").value(
+                        "/api/tasks/" + task.id() + "/status"
+                ))
+                .andExpect(jsonPath("$.trace").doesNotExist());
     }
 
     @Test

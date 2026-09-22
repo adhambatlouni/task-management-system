@@ -21,8 +21,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/tasks/{taskId}/activities")
-@Tag(name = "Task activities", description = "Immutable task change history")
+@RequestMapping(
+        value = "/api/tasks/{taskId}/activities",
+        produces = MediaType.APPLICATION_JSON_VALUE
+)
+@Tag(
+        name = "Task activities",
+        description = "Read append-only, actor-attributed task change history"
+)
 @SecurityRequirement(name = "bearerAuth")
 public class TaskActivityController {
 
@@ -33,7 +39,10 @@ public class TaskActivityController {
     }
 
     @GetMapping
-    @Operation(summary = "List a task's activity history")
+    @Operation(
+            summary = "List a task's activity history",
+            description = "Returns append-only assignment and status events in newest-first order."
+    )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -69,6 +78,7 @@ public class TaskActivityController {
     })
     public ResponseEntity<PagedResponse<TaskActivityResponse>>
     getTaskActivities(
+            @Parameter(description = "Task identifier", example = "42")
             @PathVariable Long taskId,
             @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
