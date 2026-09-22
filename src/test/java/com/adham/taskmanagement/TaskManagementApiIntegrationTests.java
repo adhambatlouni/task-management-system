@@ -73,6 +73,16 @@ class TaskManagementApiIntegrationTests {
     }
 
     @Test
+    void redirectsPublicRootToSwaggerUi() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(status().isFound())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        "/swagger-ui.html"
+                ));
+    }
+
+    @Test
     void publishesOpenApiDocumentation() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
