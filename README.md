@@ -3,23 +3,34 @@
 
 # Task Management System
 
-**A task workflow backend built around explicit authorization, safe concurrent updates, auditable change history, and PostgreSQL-backed integration testing.**
+**A Spring Boot task workflow API built around explicit authorization, safe concurrent updates, auditable change history, PostgreSQL-backed integration testing, and reproducible deployment.**
 
 [![CI](https://github.com/adhambatlouni/task-management-system/actions/workflows/ci.yml/badge.svg)](https://github.com/adhambatlouni/task-management-system/actions/workflows/ci.yml)
+[![Live API](https://img.shields.io/badge/Live_API-Explore_in_Swagger-85EA2D?logo=swagger&logoColor=black)](https://task-management-system-api-9lfl.onrender.com/swagger-ui/index.html)
 ![Java](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.1-6DB33F?logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-[Architecture](#architecture) · [Quick start](#quick-start) · [API](#api-reference) · [Testing](#testing-and-ci) · [Deployment](docs/deployment.md) · [Decisions](#engineering-decisions)
+[Live API](#live-api) · [Architecture](#architecture) · [Quick start](#quick-start) · [API](#api-reference) · [Testing](#testing-and-ci) · [Deployment](docs/deployment.md) · [Decisions](#engineering-decisions)
 
 </div>
 
 ---
 
-Task Management System is a Spring Boot REST API for coordinating work between task authors and assignees. Users register, exchange credentials for a signed JWT, create and assign tasks, update status, discuss work through comments, inspect each task's activity timeline, and search the task catalogue with filtering, pagination, and sorting.
+Task Management System is a Spring Boot REST API for coordinating work between task authors and assignees. Users register, exchange credentials for a signed JWT, create and assign tasks, update status, discuss work through comments, inspect each task's activity timeline, and search the task catalog with filtering, pagination, and sorting.
 
 The codebase stays compact while covering the concerns that make an API dependable: authorization inside the service layer, transactional writes, versioned PostgreSQL migrations, stable error contracts, externalized secrets, containerized execution, and integration tests that run through the real security and persistence stack.
+
+## Live API
+
+The public deployment runs the repository's Dockerized Spring Boot application on Render and stores its data in a persistent Neon PostgreSQL database.
+
+- **Interactive API:** [Open Swagger UI](https://task-management-system-api-9lfl.onrender.com/swagger-ui/index.html)
+- **Machine-readable contract:** [OpenAPI JSON](https://task-management-system-api-9lfl.onrender.com/v3/api-docs)
+- **Service readiness:** [Health endpoint](https://task-management-system-api-9lfl.onrender.com/actuator/health)
+
+Swagger UI is the fastest way to review and exercise the complete API. The free web service may take longer to answer its first request after a period of inactivity while the instance starts.
 
 ## Engineering at a glance
 
@@ -30,7 +41,7 @@ The codebase stays compact while covering the concerns that make an API dependab
 | **Concurrency** | HTTP ETags and `If-Match` backed by JPA optimistic locking |
 | **Traceability** | Append-only, actor-attributed activity history for task creation, assignment, and status changes |
 | **Persistence** | PostgreSQL 18, JPA relationships, audit timestamps, indexed foreign keys |
-| **API contract** | Bean Validation, Problem Details, bounded pagination, controlled sorting, OpenAPI |
+| **API contract** | Curated Swagger UI, OpenAPI, Bean Validation, Problem Details, bounded pagination, controlled sorting |
 | **Verification** | Full-context tests with MockMvc, Testcontainers, PostgreSQL, Flyway, and Spring Security |
 | **Delivery** | Multi-stage non-root image, health-aware Docker Compose stack, Render Blueprint, GitHub Actions CI |
 
@@ -129,7 +140,7 @@ docker compose logs -f app
 
 Once the application is healthy:
 
-- **Swagger UI:** [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
+- **Swagger UI:** [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
 - **OpenAPI JSON:** [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
 - **PostgreSQL:** `localhost:5434`, available for optional inspection through pgAdmin
 
@@ -145,9 +156,9 @@ The named PostgreSQL volume preserves application data when containers are recre
 docker compose down --volumes
 ```
 
-### Free cloud deployment
+### Cloud deployment
 
-The repository includes a Render Blueprint for the Dockerized API and a guide for connecting it to a persistent Neon PostgreSQL database without committing credentials. See [Free cloud deployment](docs/deployment.md).
+The repository includes a Render Blueprint for the Dockerized API and a guide for connecting it to a persistent Neon PostgreSQL database without committing credentials. See the [deployment guide](docs/deployment.md) or [open the live API](https://task-management-system-api-9lfl.onrender.com/swagger-ui/index.html).
 
 ## Try the complete workflow
 
@@ -216,6 +227,24 @@ Content-Type: application/json
 ```
 
 The update succeeds only while task `1` is still version `2`. A successful write increments it to version `3` and returns `ETag: "3"`. A stale `If-Match` receives `412 Precondition Failed`; omitting the header receives `428 Precondition Required`. JPA's `@Version` check also protects against another transaction committing during the update itself.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant DB as PostgreSQL
+
+    Client->>API: GET /api/tasks/1
+    API-->>Client: 200 OK + ETag "2"
+    Client->>API: PUT /api/tasks/1/status + If-Match "2"
+    API->>DB: Update only while version = 2
+    DB-->>API: Persist version 3
+    API-->>Client: 200 OK + ETag "3"
+
+    Note over Client,API: A client still holding ETag "2" is now stale
+    Client->>API: PUT /api/tasks/1/status + If-Match "2"
+    API-->>Client: 412 Precondition Failed
+```
 
 ### Task activity history
 
@@ -417,7 +446,8 @@ The tests cover:
 - actor-attributed activity history, no-op suppression, pagination, and rejected-change exclusion;
 - timestamps, pagination, sorting, and invalid query parameters;
 - `400`, `401`, `403`, `404`, `409`, `412`, and `428` paths without stack-trace leakage;
-- the current Flyway version and generated OpenAPI contract.
+- stable Problem Details for malformed or unsupported request bodies;
+- the current Flyway version and generated OpenAPI contract, including security schemes, examples, and concurrency headers.
 
 GitHub Actions runs `./mvnw --batch-mode --no-transfer-progress verify` for every pull request targeting `main` and every push to `main`. The workflow uses Java 25, caches Maven dependencies, grants read-only repository access, and cancels superseded runs on the same ref.
 
@@ -482,6 +512,7 @@ Docker Compose reads `.env`; Spring Boot does not automatically read that file w
 | `DB_POOL_MIN_IDLE` | No | `0` | Minimum idle database connections |
 | `PORT` | No | `8080` | HTTP port; cloud platforms provide this automatically |
 | `OPENAPI_ENABLED` | Production only | `true` | Enables the OpenAPI contract and Swagger UI |
+| `OPENAPI_SERVER_URL` | No | Render URL when available | Public base URL advertised by the generated OpenAPI contract |
 | `APP_PORT` | Compose only | `8080` | Host port mapped to the API |
 | `DB_PORT` | Compose only | `5434` | Host port mapped to PostgreSQL |
 
