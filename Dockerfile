@@ -1,12 +1,16 @@
+# syntax=docker/dockerfile:1
+
 FROM eclipse-temurin:25-jdk-alpine AS build
 
 WORKDIR /workspace
 
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
+RUN chmod +x mvnw
 
 COPY src/ src/
-RUN chmod +x mvnw && ./mvnw --no-transfer-progress package -Dmaven.test.skip=true
+RUN --mount=type=cache,target=/root/.m2 \
+    ./mvnw --batch-mode --no-transfer-progress package -Dmaven.test.skip=true
 
 FROM eclipse-temurin:25-jre-alpine
 
