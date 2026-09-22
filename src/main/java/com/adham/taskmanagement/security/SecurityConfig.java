@@ -6,7 +6,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -43,10 +42,12 @@ public class SecurityConfig {
                                 "/api/accounts"
                         ).permitAll()
 
-                        // Hyperskill / development endpoints
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers("/actuator/shutdown").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/actuator/health",
+                                "/actuator/health/**"
+                        ).permitAll()
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -70,11 +71,6 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS
-                        )
-                )
-
-                .headers(headers ->
-                        headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin
                         )
                 )
 

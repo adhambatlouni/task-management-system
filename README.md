@@ -11,7 +11,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-[Architecture](#architecture) · [Quick start](#quick-start) · [API](#api-reference) · [Testing](#testing-and-ci) · [Decisions](#engineering-decisions)
+[Architecture](#architecture) · [Quick start](#quick-start) · [API](#api-reference) · [Testing](#testing-and-ci) · [Deployment](docs/deployment.md) · [Decisions](#engineering-decisions)
 
 </div>
 
@@ -32,7 +32,7 @@ The codebase stays compact while covering the concerns that make an API dependab
 | **Persistence** | PostgreSQL 18, JPA relationships, audit timestamps, indexed foreign keys |
 | **API contract** | Bean Validation, Problem Details, bounded pagination, controlled sorting, OpenAPI |
 | **Verification** | Full-context tests with MockMvc, Testcontainers, PostgreSQL, Flyway, and Spring Security |
-| **Delivery** | Multi-stage non-root image, health-aware Docker Compose stack, GitHub Actions CI |
+| **Delivery** | Multi-stage non-root image, health-aware Docker Compose stack, Render Blueprint, GitHub Actions CI |
 
 ## Architecture
 
@@ -144,6 +144,10 @@ The named PostgreSQL volume preserves application data when containers are recre
 ```bash
 docker compose down --volumes
 ```
+
+### Free cloud deployment
+
+The repository includes a Render Blueprint for the Dockerized API and a guide for connecting it to a persistent Neon PostgreSQL database without committing credentials. See [Free cloud deployment](docs/deployment.md).
 
 ## Try the complete workflow
 
@@ -474,6 +478,10 @@ Docker Compose reads `.env`; Spring Boot does not automatically read that file w
 | `JWT_SECRET_BASE64` | Yes | — | Base64 signing secret containing at least 32 bytes |
 | `JWT_ACCESS_TOKEN_TTL` | No | `1h` | Access-token lifetime as a Spring `Duration` |
 | `DB_BASELINE_ON_MIGRATE` | No | `false` | Opt-in Flyway baseline for adopting an existing schema |
+| `DB_POOL_MAX_SIZE` | No | `5` | Maximum database connections retained by HikariCP |
+| `DB_POOL_MIN_IDLE` | No | `0` | Minimum idle database connections |
+| `PORT` | No | `8080` | HTTP port; cloud platforms provide this automatically |
+| `OPENAPI_ENABLED` | Production only | `true` | Enables the OpenAPI contract and Swagger UI |
 | `APP_PORT` | Compose only | `8080` | Host port mapped to the API |
 | `DB_PORT` | Compose only | `5434` | Host port mapped to PostgreSQL |
 
@@ -498,6 +506,8 @@ src/
 .github/workflows/ci.yml   # pull-request and main-branch verification
 compose.yaml               # application + PostgreSQL development stack
 Dockerfile                 # multi-stage Java 25 image
+render.yaml                # free Render web-service definition
+docs/deployment.md         # Render + Neon deployment guide
 .env.example               # local configuration template
 ```
 
