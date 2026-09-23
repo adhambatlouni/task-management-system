@@ -6,7 +6,7 @@
 **A Spring Boot task workflow API built around explicit authorization, safe concurrent updates, auditable change history, PostgreSQL-backed integration testing, and reproducible deployment.**
 
 [![CI](https://github.com/adhambatlouni/task-management-system/actions/workflows/ci.yml/badge.svg)](https://github.com/adhambatlouni/task-management-system/actions/workflows/ci.yml)
-[![Live API](https://img.shields.io/badge/Live_API-Explore_in_Swagger-85EA2D?logo=swagger&logoColor=black)](https://task-management-system-api-9lfl.onrender.com/swagger-ui/index.html)
+[![Live API](https://img.shields.io/badge/Live_API-Explore_in_Swagger-85EA2D?logo=swagger&logoColor=black)](https://taskflow-api-tuhi.onrender.com/swagger-ui/index.html)
 ![Java](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.1-6DB33F?logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
@@ -26,9 +26,9 @@ The codebase stays compact while covering the concerns that make an API dependab
 
 The public deployment runs the repository's Dockerized Spring Boot application on Render and stores its data in a persistent Neon PostgreSQL database.
 
-- **Interactive API:** [Open Swagger UI](https://task-management-system-api-9lfl.onrender.com/swagger-ui/index.html)
-- **Machine-readable contract:** [OpenAPI JSON](https://task-management-system-api-9lfl.onrender.com/v3/api-docs)
-- **Service readiness:** [Health endpoint](https://task-management-system-api-9lfl.onrender.com/actuator/health)
+- **Interactive API:** [Open Swagger UI](https://taskflow-api-tuhi.onrender.com/swagger-ui/index.html)
+- **Machine-readable contract:** [OpenAPI JSON](https://taskflow-api-tuhi.onrender.com/v3/api-docs)
+- **Service readiness:** [Health endpoint](https://taskflow-api-tuhi.onrender.com/actuator/health)
 
 Swagger UI is the fastest way to review and exercise the complete API. The free web service may take longer to answer its first request after a period of inactivity while the instance starts.
 
@@ -158,7 +158,7 @@ docker compose down --volumes
 
 ### Cloud deployment
 
-The repository includes a Render Blueprint for the Dockerized API and a guide for connecting it to a persistent Neon PostgreSQL database without committing credentials. See the [deployment guide](docs/deployment.md) or [open the live API](https://task-management-system-api-9lfl.onrender.com/swagger-ui/index.html).
+The repository includes a Render Blueprint for the Dockerized API and a guide for connecting it to a persistent Neon PostgreSQL database without committing credentials. See the [deployment guide](docs/deployment.md) or [open the live API](https://taskflow-api-tuhi.onrender.com/swagger-ui/index.html).
 
 ## Try the complete workflow
 
