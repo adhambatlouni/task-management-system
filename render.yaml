@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: task-management-system-api
+    name: taskflow-api
     runtime: docker
     plan: free
     region: frankfurt
