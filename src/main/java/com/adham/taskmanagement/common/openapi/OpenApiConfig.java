@@ -26,7 +26,15 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Task Management API")
                         .description("""
-                                Spring Boot REST API for task workflows with JWT authentication, service-layer authorization, optimistic concurrency, and append-only activity history.
+                                Secure task workflow API with explicit authorization, optimistic concurrency control, and actor-attributed activity history.
+
+                                ### Start here
+                                1. Register an account with **Accounts**.
+                                2. Authorize **basicAuth** with that email and password.
+                                3. Create a JWT with **Authentication**, then copy the returned token.
+                                4. Authorize **bearerAuth** with the token to use the protected endpoints.
+
+                                Assignment and status changes use `ETag` and `If-Match` to reject stale updates. Each accepted change is captured in the task's append-only activity history.
                                 """)
                         .version("1.0.0")
                         .contact(new Contact()
@@ -62,10 +70,9 @@ public class OpenApiConfig {
                 );
 
         if (!serverUrl.isBlank()) {
-            openApi.addServersItem(
-                    new Server()
-                            .url(serverUrl.strip())
-                            .description("Production API")
+            openApi.addServersItem(new Server()
+                    .url(serverUrl.strip())
+                    .description("Production API")
             );
         }
 
